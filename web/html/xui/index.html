@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+{{template "head" .}}
+<style>
+    @media (min-width: 769px) {
+        .ant-layout-content {
+            margin: 24px 16px;
+        }
+        .ant-card-hoverable {
+            margin-inline: 0.3rem;
+        }
+    }
+
+    .ant-col-sm-24 {
+        margin-top: 10px;
+    }
+
+    .ant-card-dark h2 {
+        color: hsla(0,0%,100%,.65);
+    }
+</style>
+<body>
+<a-layout id="app" v-cloak :class="themeSwitcher.currentTheme">
+    {{ template "commonSider" . }}
+    <a-layout id="content-layout">
+        <a-layout-content>
+            <a-spin :spinning="spinning" :delay="200" :tip="loadingTip"/>
+            <transition name="list" appear>
+                <a-alert type="error" v-if="showAlert" style="margin-bottom: 10px"
+                message='{{ i18n "secAlertTitle" }}'
+                color="red"
+                description='{{ i18n "secAlertSsl" }}'
+                show-icon closable
+                >
+                </a-alert>
+            </transition>
+            <transition name="list" appear>
+                <a-row>
+                    <a-card hoverable>
+                        <a-row>
+                            <a-col :sm="24" :md="12">
+                                <a-row>
+                                    <a-col :span="12" style="text-align: center">
+                                        <a-progress type="dashboard" status="normal"
+                                                    :stroke-color="status.cpu.color"
+                                                    :percent="status.cpu.percent"></a-progress>
+                                            <div><strong>CPU:</strong>  [[ cpuCoreFormat(status.cpuCount) ]]</div>
+                                    </a-col>
+                                    <a-col :span="12" style="text-align: center">
+                                        <a-progress type="dashboard" status="normal"
+                                                    :stroke-color="status.mem.color"
+                                                    :percent="status.mem.percent"></a-progress>
+                                        <div>
+                                            <strong>{{ i18n "pages.index.memory"}}:</strong> [[ sizeFormat(status.mem.current) ]] / [[ sizeFormat(status.mem.total) ]]
+                                        </div>
+                                    </a-col>
+                                </a-row>
+                            </a-col>
+                            <a-col :sm="24" :md="12">
+                                <a-row>
+                                    <a-col :span="12" style="text-align: center">
+                                        <a-progress type="dashboard" status="normal"
+                                                    :stroke-color="status.swap.color"
+                                                    :percent="status.swap.percent"></a-progress>
+                                        <div>
+                                            <strong>Swap:</strong> [[ sizeFormat(status.swap.current) ]] / [[ sizeFormat(status.swap.total) ]]
+                                        </div>
+                                    </a-col>
+                                    <a-col :span="12" style="text-align: center">
+                                        <a-progress type="dashboard" status="normal"
+                                                    :stroke-color="status.disk.color"
+                                                    :percent="status.disk.percent"></a-progress>
+                                        <div>
+                                            <strong>{{ i18n "pages.index.hard"}}:</strong> [[ sizeFormat(status.disk.current) ]] / [[ sizeFormat(status.disk.total) ]]
+                                        </div>
+                                    </a-col>
+                                </a-row>
+                            </a-col>
+                        </a-row>
+                    </a-card>
+                </a-row>
+            </transition>
+            <transition name="list" appear>
+                <a-row>
+                    <a-col :sm="24" :md="12">
+                        <a-card hoverable>
+                            <strong>{{ i18n "pages.inbounds.stream.tcp.version" }}:</strong>
+                            <a href="https://github.com/alireza0/x-ui/releases" target="_blank">
+                                <a-tag color="purple" style="cursor: pointer;">X-UI {{ .cur_ver }}</a-tag>
+                            </a>
+                            <a-tooltip title='{{ i18n "pages.index.xraySwitch" }}'>
+                                <a-tag color="purple" style="cursor: pointer;" @click="openSelectV2rayVersion">Xray [[ status.xray.version ]]</a-tag>
+                            </a-tooltip>
+                        </a-card>
+                    </a-col>
+                    <a-col :sm="24" :md="12">
+                        <a-card hoverable>
+                            <strong>{{ i18n "pages.index.operationHours" }}:</strong> 
+                            <a-tooltip>
+                                 <template slot="title">
+                                     {{ i18n "pages.index.xrayoperationHoursDesc" }}
+                                 </template>
+                                <a-tag color="blue" style="margin-right: 3px;">Xray [[ formatSecond(status.appStats.uptime) ]]</a-tag>
+                            </a-tooltip>      
+                            <a-tooltip>
+                                <template slot="title">
+                                    {{ i18n "pages.index.operationHoursDesc" }}
+                                </template>
+                                 <a-tag color="blue">OS [[ formatSecond(status.uptime) ]]</a-tag>
+                            </a-tooltip>
+                        </a-card>
+                    </a-col>
+                    <a-col :sm="24" :md="12">
+                        <a-card hoverable>
+                            <strong>{{ i18n "pages.index.xrayStatus" }}:</strong>
+                            <a-tag :color="status.xray.color" style="margin-right: 3px;"><strong>[[ status.xray.state ]]</strong></a-tag>
+                            <a-popover v-if="status.xray.state === State.Error"
+                                :overlay-class-name="themeSwitcher.currentTheme">
+                                <span slot="title" style="font-size: 12pt">An error occurred while running Xray
+                                    <a-tag color="purple" style="cursor: pointer; float: right;" @click="openLogs()">{{ i18n "pages.index.logs" }}</a-tag>
+                                </span>
+                                <template slot="content">
+                                    <p style="max-width: 400px" v-for="line in status.xray.errorMsg.split('\n')">[[ line ]]</p>
+                                </template>
+                                <a-icon type="exclamation-circle"></a-icon>
+                            </a-popover>
+                            <a-tag color="purple" style="cursor: pointer; margin-right: 3px;" @click="stopXrayService">{{ i18n "pages.index.stopXray" }}</a-tag>
+                            <a-tag color="purple" style="cursor: pointer; margin-right: 3px;" @click="restartXrayService">{{ i18n "pages.index.restartXray" }}</a-tag>             
+                        </a-card>
+                    </a-col>
+                    <a-col :sm="24" :md="12">
+                        <a-card hoverable>
+                            <strong>{{ i18n "menu.link" }}:</strong>
+                            <a-tag color="purple" style="cursor: pointer; margin-right: 3px;" @click="openLogs()">{{ i18n "pages.index.logs" }}</a-tag>
+                            <a-tag color="purple" style="cursor: pointer; margin-right: 3px;" @click="openConfig">{{ i18n "pages.index.config" }}</a-tag>
+                            <a-tag color="purple" style="cursor: pointer;" @click="openBackup">{{ i18n "pages.index.backup" }}</a-tag>
+                        </a-card>
+                    </a-col>
+                    <a-col :sm="24" :md="12">
+                        <a-card hoverable>
+                            <strong>{{ i18n "pages.index.systemLoad" }}:</strong> 
+                            <a-tooltip>
+                                <template slot="title">
+                                    {{ i18n "pages.index.systemLoadDesc" }}
+                                </template>
+                                <a-tag color="blue">[[ status.loads[0] ]] | [[ status.loads[1] ]] | [[ status.loads[2] ]]</a-tag>
+                            </a-tooltip>
+                        </a-card>
+                    </a-col>
+                    <a-col :sm="24" :md="12">
+                        <a-card hoverable>
+                            <strong>{{ i18n "usage" }}:</strong>
+                            <a-tag color="blue" style="margin-right: 3px;">RAM [[ sizeFormat(status.appStats.mem) ]]</a-tag>
+                            <a-tag color="blue">Threads [[ status.appStats.threads ]]</a-tag>
+                        </a-card>
+                    </a-col>
+                    <a-col :sm="24" :md="12">
+                        <a-card hoverable>
+                            <strong>{{ i18n "pages.index.serverInfo" }}:</strong>
+                            <a-tooltip>
+                                <template slot="title">
+                                    {{ i18n "pages.index.hostname" }}
+                                </template>
+                                <a-tag color="blue" style="margin-right: 3px;">[[ status.hostInfo.hostname ]]</a-tag>
+                            </a-tooltip>
+                            <template v-if="status.hostInfo.ipv4">    
+                                <a-tooltip>
+                                    <template slot="title">
+                                        [[ status.hostInfo.ipv4 ]]
+                                    </template>
+                                    <a-tag color="blue" style="margin-right: 3px;">IPv4</a-tag>
+                                </a-tooltip>
+                            </template>
+                            <template v-if="status.hostInfo.ipv6">
+                                <a-tooltip>
+                                    <template slot="title">
+                                        [[ status.hostInfo.ipv6 ]]
+                                    </template>
+                                    <a-tag color="blue" style="margin-right: 3px;">IPv6</a-tag>
+                                </a-tooltip>
+                            </template>
+                        </a-card>
+                    </a-col>
+                    <a-col :sm="24" :md="12">
+                        <a-card hoverable>
+                            <a-row>
+                                <a-col :span="12">
+                                    <a-icon type="swap"></a-icon>    
+                                    <a-tooltip>
+                                        <template slot="title">
+                                            {{ i18n "pages.index.connectionTcpCountDesc" }}
+                                        </template>
+                                        <strong>TCP:</Strong> <a-tag>[[ status.tcpCount ]]</a-tag>
+                                    </a-tooltip>
+                                </a-col>
+                                <a-col :span="12">
+                                    <a-icon type="swap"></a-icon>
+                                    <a-tooltip>
+                                        <template slot="title">
+                                            {{ i18n "pages.index.connectionUdpCountDesc" }}
+                                        </template>
+                                        <strong>UDP:</strong> <a-tag>[[ status.udpCount ]]</a-tag>
+                                    </a-tooltip>
+                                </a-col>
+                            </a-row>
+                        </a-card>
+                    </a-col>
+                    <a-col :sm="24" :md="12">
+                        <a-card hoverable>
+                            <a-row>
+                                <a-col :span="12">
+                                    <a-icon type="arrow-up"></a-icon>
+                                    <a-tooltip>
+                                        <template slot="title">
+                                            {{ i18n "pages.index.upSpeed" }}
+                                        </template>
+                                        <strong>Up:</strong> [[ sizeFormat(status.netIO.up) ]]/s
+                                    </a-tooltip>
+                                </a-col>
+                                <a-col :span="12">
+                                    <a-icon type="arrow-down"></a-icon>
+                                    <a-tooltip>
+                                        <template slot="title">
+                                            {{ i18n "pages.index.downSpeed" }}
+                                        </template>
+                                        <strong>Down:</strong> [[ sizeFormat(status.netIO.down) ]]/s
+                                    </a-tooltip>
+                                </a-col>
+                            </a-row>
+                        </a-card>
+                    </a-col>
+                    <a-col :sm="24" :md="12">
+                        <a-card hoverable>
+                            <a-row>
+                                <a-col :span="12">
+                                    <a-icon type="cloud-upload"></a-icon>
+                                    <a-tooltip>
+                                        <template slot="title">
+                                            {{ i18n "pages.index.totalSent" }}
+                                        </template>
+                                        <strong>Out:</strong> [[ sizeFormat(status.netTraffic.sent) ]]
+                                    </a-tooltip>
+                                </a-col>
+                                <a-col :span="12">
+                                    <a-icon type="cloud-download"></a-icon>
+                                    <a-tooltip>
+                                        <template slot="title">
+                                            {{ i18n "pages.index.totalReceive" }}
+                                        </template>
+                                       <strong>In:</strong> [[ sizeFormat(status.netTraffic.recv) ]]
+                                    </a-tooltip>
+                                </a-col>
+                            </a-row>
+                        </a-card>
+                    </a-col>
+                </a-row>
+            </transition>
+        </a-layout-content>
+    </a-layout>
+
+    <a-modal id="version-modal" v-model="versionModal.visible" title='{{ i18n "pages.index.xraySwitch" }}'
+             :closable="true" @ok="() => versionModal.visible = false"
+             :class="themeSwitcher.currentTheme"
+             footer="">
+        <a-alert type="warning" style="margin-bottom: 12px; width: fit-content"
+        message='{{ i18n "pages.index.xraySwitchClickDesk" }}'
+        show-icon
+        ></a-alert>
+        <template v-for="version, index in versionModal.versions">
+            <a-tag :color="index % 2 == 0 ? 'purple' : 'blue'"
+                   style="margin: 10px" @click="switchV2rayVersion(version)">
+                [[ version ]]
+            </a-tag>
+        </template>
+    </a-modal>
+
+    <a-modal id="log-modal" v-model="logModal.visible"
+             :closable="true" @cancel="() => logModal.visible = false"
+             :class="themeSwitcher.currentTheme"
+             width="800px" footer="">
+        <template slot="title">
+            {{ i18n "pages.index.logs" }}
+            <a-icon :spin="logModal.loading"
+                    type="sync"
+                    style="vertical-align: middle; margin-left: 10px;"
+                    :disabled="logModal.loading"
+                    @click="openLogs()">
+            </a-icon>
+        </template>
+        <a-form layout="inline">
+            <a-form-item>
+                <a-input-group compact>
+                    <a-select v-model="logModal.rows" style="width:70px;"
+                    @change="openLogs()" :dropdown-class-name="themeSwitcher.currentTheme">
+                        <a-select-option value="10">10</a-select-option>
+                        <a-select-option value="20">20</a-select-option>
+                        <a-select-option value="50">50</a-select-option>
+                        <a-select-option value="100">100</a-select-option>
+                        <a-select-option value="500">500</a-select-option>
+                    </a-select>
+                    <a-select v-model="logModal.level" style="width:100px;"
+                    @change="openLogs()" :dropdown-class-name="themeSwitcher.currentTheme">
+                        <a-select-option value="debug">Debug</a-select-option>
+                        <a-select-option value="info">Info</a-select-option>
+                        <a-select-option value="warning">Warning</a-select-option>
+                        <a-select-option value="err">Error</a-select-option>
+                    </a-select>
+                </a-input-group>
+            </a-form-item>
+            <a-form-item>
+                <a-checkbox v-model="logModal.syslog" @change="openLogs()">SysLog</a-checkbox>
+            </a-form-item>
+            <a-form-item style="float: right;">
+                <a-button type="primary" icon="download"
+                :href="'data:application/text;charset=utf-8,' + encodeURIComponent(logModal.logs?.join('\n'))" download="x-ui.log">
+                </a-button>
+            </a-form-item>
+        </a-form>
+        <div class="ant-input" style="height: auto; max-height: 500px; overflow: auto;" v-html="logModal.formattedLogs"></div>
+    </a-modal>
+
+    <a-modal id="backup-modal" v-model="backupModal.visible" :title="backupModal.title"
+            :closable="true" footer=""
+            :class="themeSwitcher.currentTheme">
+            <a-alert type="warning" style="margin-bottom: 10px; width: fit-content"
+            :message="backupModal.description"
+            show-icon
+            ></a-alert>
+        <a-space direction="horizontal" style="text-align: center" style="margin-bottom: 10px;">
+            <a-button type="primary" @click="exportDatabase()">
+                [[ backupModal.exportText ]]
+            </a-button>
+            <a-button type="primary" @click="importDatabase()">
+                [[ backupModal.importText ]]
+            </a-button>
+        </a-space>
+    </a-modal>
+
+</a-layout>
+{{template "js" .}}
+<script src="{{ .base_path }}assets/clipboard/clipboard.min.js"></script>
+{{template "component/themeSwitcher" .}}
+{{template "textModal"}}
+<script>
+    const State = {
+        Running: "Running",
+        Stop: "Stop",
+        Error: "Error",
+    }
+    Object.freeze(State);
+
+    class CurTotal {
+
+        constructor(current, total) {
+            this.current = current;
+            this.total = total;
+        }
+
+        get percent() {
+            if (this.total === 0) {
+                return 0;
+            }
+            return toFixed(this.current / this.total * 100, 2);
+        }
+
+        get color() {
+            const percent = this.percent;
+            if (percent < 80) {
+                return '#0e49b5';
+            } else if (percent < 90) {
+                return '#ffa031';
+            } else {
+                return '#e04141';
+            }
+        }
+    }
+
+    class Status {
+        constructor(data) {
+            this.cpu = new CurTotal(0, 0);
+            this.cpuCount = 0;
+            this.disk = new CurTotal(0, 0);
+            this.loads = [0, 0, 0];
+            this.mem = new CurTotal(0, 0);
+            this.netIO = {up: 0, down: 0};
+            this.netTraffic = {sent: 0, recv: 0};
+            this.swap = new CurTotal(0, 0);
+            this.tcpCount = 0;
+            this.udpCount = 0;
+            this.uptime = 0;
+            this.appUptime = 0;
+            this.appStats = {threads: 0, mem: 0, uptime: 0};
+            this.hostInfo = {hostname:"", ipv4: "", ipv6: ""};
+            this.xray = {state: State.Stop, errorMsg: "", version: "", color: ""};
+
+            if (data == null) {
+                return;
+            }
+            this.cpu = new CurTotal(data.cpu, 100);
+            this.cpuCount = data.cpuCount;
+            this.disk = new CurTotal(data.disk.current, data.disk.total);
+            this.loads = data.loads.map(load => toFixed(load, 2));
+            this.mem = new CurTotal(data.mem.current, data.mem.total);
+            this.netIO = data.netIO;
+            this.netTraffic = data.netTraffic;
+            this.swap = new CurTotal(data.swap.current, data.swap.total);
+            this.tcpCount = data.tcpCount;
+            this.udpCount = data.udpCount;
+            this.uptime = data.uptime;
+            this.appUptime = data.appUptime;
+            this.appStats = data.appStats;
+            this.hostInfo = data.hostInfo;
+            this.xray = data.xray;
+            switch (this.xray.state) {
+                case State.Running:
+                    this.xray.color = 'blue';
+                    break;
+                case State.Stop:
+                    this.xray.color = "orange";
+                    break;
+                case State.Error:
+                    this.xray.color = "red";
+                    break;
+                default:
+                    this.xray.color = "gray";
+            }
+        }
+    }
+
+    const versionModal = {
+        visible: false,
+        versions: [],
+        show(versions) {
+            this.visible = true;
+            this.versions = versions;
+        },
+        hide() {
+            this.visible = false;
+        },
+    };
+
+    const logModal = {
+        visible: false,
+        logs: [],
+        rows: 20,
+        level: 'info',
+        syslog: false,
+        loading: false,
+        show(logs) {
+            this.visible = true;
+            this.logs = logs; 
+            this.formattedLogs = this.logs?.length > 0 ? this.formatLogs(this.logs) : "No Record...";
+        },
+        formatLogs(logs) {
+            let formattedLogs = '';
+            const levels = ["DEBUG","INFO","WARNING","ERROR"];
+            const levelColors = ["#3c89e8","#008771","#f37b24","#e04141","#bcbcbc"];
+
+            logs.forEach((log, index) => {
+                let [data, message] = log.split(" - ",2);
+                const parts = data.split(" ")
+                if(index>0) formattedLogs += '<br>';
+
+                if (parts.length === 3) {
+                    const d = parts[0];
+                    const t = parts[1];
+                    const level = parts[2];
+                    const levelIndex = levels.indexOf(level,levels) || 4;
+
+                    //formattedLogs += `<span style="color: gray;">${index + 1}.</span>`;
+                    formattedLogs += `<span style="color: ${levelColors[0]};">${d} ${t}</span> `;
+                    formattedLogs += `<span style="color: ${levelColors[levelIndex]}">${level}</span>`;
+                } else {
+                    const levelIndex = levels.indexOf(data,levels) || 4;
+                    formattedLogs += `<span style="color: ${levelColors[levelIndex]}">${data}</span>`;
+                }
+
+                if(message){
+                    if(message.startsWith("XRAY:"))
+                        message = "<b>XRAY: </b>" + message.substring(5);
+                    else
+                        message = "<b>X-UI: </b>" + message;
+                }
+
+                formattedLogs += message ? ' - ' + message : '';
+            });
+
+            return formattedLogs;
+        },
+        hide() {
+            this.visible = false;
+        },
+    };
+
+    const backupModal = {
+        visible: false,
+        title: '',
+        description: '',
+        exportText: '',
+        importText: '',
+        show({
+            title = '{{ i18n "pages.index.backupTitle" }}',
+            description = '{{ i18n "pages.index.backupDescription" }}',
+            exportText = '{{ i18n "pages.index.exportDatabase" }}',
+            importText = '{{ i18n "pages.index.importDatabase" }}',
+        }) {
+            this.title = title;
+            this.description = description;
+            this.exportText = exportText;
+            this.importText = importText;
+            this.visible = true;
+        },
+        hide() {
+            this.visible = false;
+        },
+    };
+
+    const app = new Vue({
+        delimiters: ['[[', ']]'],
+        el: '#app',
+        data: {
+            siderDrawer,
+            themeSwitcher,
+            status: new Status(),
+            versionModal,
+            logModal,
+            backupModal,
+            spinning: false,
+            loadingTip: '{{ i18n "loading"}}',
+            showAlert: false,
+        },
+        methods: {
+            loading(spinning, tip = '{{ i18n "loading"}}') {
+                this.spinning = spinning;
+                this.loadingTip = tip;
+            },
+            async getStatus() {
+                const msg = await HttpUtil.post('/server/status');
+                if (msg.success) {
+                    this.setStatus(msg.obj);
+                }
+            },
+            setStatus(data) {
+                this.status = new Status(data);
+            },
+            async openSelectV2rayVersion() {
+                this.loading(true);
+                const msg = await HttpUtil.post('server/getXrayVersion');
+                this.loading(false);
+                if (!msg.success) {
+                    return;
+                }
+                versionModal.show(msg.obj);
+            },
+            switchV2rayVersion(version) {
+                this.$confirm({
+                    title: '{{ i18n "pages.index.xraySwitchVersionDialog"}}',
+                    content: '{{ i18n "pages.index.xraySwitchVersionDialogDesc"}}' + ` ${version}?`,
+                    class: themeSwitcher.currentTheme,
+                    okText: '{{ i18n "confirm"}}',
+                    cancelText: '{{ i18n "cancel"}}',
+                    onOk: async () => {
+                        versionModal.hide();
+                        this.loading(true, '{{ i18n "pages.index.dontRefresh"}}');
+                        await HttpUtil.post(`/server/installXray/${version}`);
+                        this.loading(false);
+                    },
+                });
+            },
+            async stopXrayService() {
+                this.loading(true);
+                const msg = await HttpUtil.post('server/stopXrayService');
+                this.loading(false);
+                if (!msg.success) {
+                    return;
+                }
+            },
+            async restartXrayService() {
+                this.loading(true);
+                const msg = await HttpUtil.post('server/restartXrayService');
+                this.loading(false);
+                if (!msg.success) {
+                    return;
+                }
+            },
+            async openLogs(){
+                logModal.loading = true;
+                const msg = await HttpUtil.post('server/logs/'+logModal.rows,{level: logModal.level, syslog: logModal.syslog});
+                if (!msg.success) {
+                    return;
+                }
+                logModal.show(msg.obj);
+                await PromiseUtil.sleep(500);
+                logModal.loading = false;
+            },
+            async openConfig() {
+                this.loading(true);
+                const msg = await HttpUtil.post('server/getConfigJson');
+                this.loading(false);
+                if (!msg.success) {
+                    return;
+                }
+                txtModal.show('config.json', JSON.stringify(msg.obj, null, 2), 'config.json');
+            },
+            openBackup() {
+                backupModal.show({
+                    title: '{{ i18n "pages.index.backupTitle" }}',
+                    description: '{{ i18n "pages.index.backupDescription" }}',
+                    exportText: '{{ i18n "pages.index.exportDatabase" }}',
+                    importText: '{{ i18n "pages.index.importDatabase" }}',
+                });
+            },
+            exportDatabase() {
+                window.location = basePath + 'server/getDb';
+            },
+            importDatabase() {
+                const fileInput = document.createElement('input');
+                fileInput.type = 'file';
+                fileInput.accept = '.db';
+                fileInput.addEventListener('change', async (event) => {
+                    const dbFile = event.target.files[0];
+                    if (dbFile) {
+                        const formData = new FormData();
+                        formData.append('db', dbFile);
+                        backupModal.hide();
+                        this.loading(true);
+                        const uploadMsg = await HttpUtil.post('server/importDB', formData, {
+                            headers: {
+                                'Content-Type': 'multipart/form-data',
+                            }
+                        });
+                        this.loading(false);
+                        if (!uploadMsg.success) {
+                            return;
+                        }
+                        this.loading(true);
+                        const restartMsg = await HttpUtil.post("/xui/setting/restartPanel");
+                        this.loading(false);
+                        if (restartMsg.success) {
+                            this.loading(true);
+                            await PromiseUtil.sleep(5000);
+                            location.reload();
+                        }
+                    }
+                });
+                fileInput.click();
+            },
+        },
+        async mounted() {
+            if (window.location.protocol !== "https:") {
+                this.showAlert = true;
+            }
+            while (true) {
+                try {
+                    await this.getStatus();
+                } catch (e) {
+                    console.error(e);
+                }
+                await PromiseUtil.sleep(2000);
+            }
+        },
+    });
+
+</script>
+</body>
+</html>
